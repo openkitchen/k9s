@@ -208,6 +208,7 @@ K9s uses aliases to navigate most K8s resources.
 | View a Kubernetes resource using singular/plural or short-name | `:`po⏎                        | accepts singular, plural, short-name or alias ie pod or pods           |
 | View a Kubernetes resource in a given namespace                | `:`alias namespace⏎           |                                                                        |
 | Filter out a resource view given a filter                      | `/`filter⏎                    | Regex2 supported ie `fred|blee` to filter resources named fred or blee |
+| Inverse regex filer                                            | `/`! filter⏎                  | Keep everything that *doesn't* match. Not implemented for logs.        |
 | Filter resource view by labels                                 | `/`-l label-selector⏎         |                                                                        |
 | Fuzzy find a resource given a filter                           | `/`-f filter⏎                 |                                                                        |
 | Bails out of view/command/filter mode                          | `<esc>`                       |                                                                        |
@@ -220,6 +221,7 @@ K9s uses aliases to navigate most K8s resources.
 | To kill a resource (no confirmation dialog!)                   | `ctrl-k`                      |                                                                        |
 | Launch pulses view                                             | `:`pulses or pu⏎              |                                                                        |
 | Launch XRay view                                               | `:`xray RESOURCE [NAMESPACE]⏎ | RESOURCE can be one of po, svc, dp, rs, sts, ds, NAMESPACE is optional |
+| Launch Popeye view                                             | `:`popeye or pop⏎             | See https://popeyecli.io                                               |
 
 ---
 
@@ -266,6 +268,8 @@ K9s uses aliases to navigate most K8s resources.
     enableMouse: false
     # Set to true to hide K9s header. Default false
     headless: false
+    # Set to true to hide K9s footer. Default false
+    crumbsless: false
     # Indicates whether modification commands like delete/kill/edit are disabled. Default is false
     readOnly: false
     # Toggles icons display as not all terminal support these chars.
@@ -277,6 +281,7 @@ K9s uses aliases to navigate most K8s resources.
       # Defines the total number of log lines to allow in the view. Default 1000
       buffer: 500
       # Represents how far to go back in the log timeline in seconds. Default is 1min
+      # Set to -1 to disable filter
       sinceSeconds: 60
       # Go full screen while displaying logs. Default false
       fullScreenLogs: false
