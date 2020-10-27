@@ -192,6 +192,10 @@ k9s info
 # To view k9s logs
 tail -f /var/folders/8c/hh6rqbgs5nx_c_8k9_17ghfh0000gn/T/k9s-fernand.log
 
+# Enable the debug server in WSL2, and run in debug mode
+cd <k9s repo directory>
+dlv debug --headless --listen=:2345 --api-version=2 -- -l debug
+
 # Start K9s in debug mode
 k9s -l debug
 ```
