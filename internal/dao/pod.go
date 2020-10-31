@@ -205,7 +205,6 @@ func (p *Pod) TailLogs(ctx context.Context, c LogChan, opts LogOptions) error {
 
 	var tailed bool
 	for _, co := range po.Spec.InitContainers {
-		log.Debug().Msgf("Tailing INIT-CO %q", co.Name)
 		opts.Container = co.Name
 		if err := tailLogs(ctx, p, c, opts); err != nil {
 			return err
@@ -213,7 +212,6 @@ func (p *Pod) TailLogs(ctx context.Context, c LogChan, opts LogOptions) error {
 		tailed = true
 	}
 	for _, co := range po.Spec.Containers {
-		log.Debug().Msgf("Tailing CO %q", co.Name)
 		opts.Container = co.Name
 		if err := tailLogs(ctx, p, c, opts); err != nil {
 			return err
@@ -221,7 +219,6 @@ func (p *Pod) TailLogs(ctx context.Context, c LogChan, opts LogOptions) error {
 		tailed = true
 	}
 	for _, co := range po.Spec.EphemeralContainers {
-		log.Debug().Msgf("Tailing EPH-CO %q", co.Name)
 		opts.Container = co.Name
 		if err := tailLogs(ctx, p, c, opts); err != nil {
 			return err
@@ -236,7 +233,7 @@ func (p *Pod) TailLogs(ctx context.Context, c LogChan, opts LogOptions) error {
 	return nil
 }
 
-// ScanSA scans for serviceaccount refs.
+// ScanSA scans for ServiceAccount refs.
 func (p *Pod) ScanSA(ctx context.Context, fqn string, wait bool) (Refs, error) {
 	ns, n := client.Namespaced(fqn)
 	oo, err := p.Factory.List(p.GVR(), ns, wait, labels.Everything())
@@ -334,12 +331,10 @@ func tailLogs(ctx context.Context, logger Logger, c LogChan, opts LogOptions) er
 	)
 done:
 	for r := 0; r < logRetryCount; r++ {
-		log.Debug().Msgf("Retry logs %d", r)
 		req, err = logger.Logs(opts.Path, opts.ToPodLogOptions())
 		if err == nil {
 			// This call will block if nothing is in the stream!!
 			if stream, err = req.Stream(ctx); err == nil {
-				log.Debug().Msgf("Reading logs")
 				go readLogs(stream, c, opts)
 				break
 			} else {
@@ -426,18 +421,18 @@ func extractFQN(o runtime.Object) string {
 	u, ok := o.(*unstructured.Unstructured)
 	if !ok {
 		log.Error().Err(fmt.Errorf("expecting unstructured but got %T", o))
-		return "na"
+		return client.NA
 	}
 	m, ok := u.Object["metadata"].(map[string]interface{})
 	if !ok {
 		log.Error().Err(fmt.Errorf("expecting interface map for metadata but got %T", u.Object["metadata"]))
-		return "na"
+		return client.NA
 	}
 
 	n, ok := m["name"].(string)
 	if !ok {
 		log.Error().Err(fmt.Errorf("expecting interface map for name but got %T", m["name"]))
-		return "na"
+		return client.NA
 	}
 
 	ns, ok := m["namespace"].(string)
@@ -458,6 +453,7 @@ func in(ll []string, s string) bool {
 	return false
 }
 
+// GetPodSpec returns a pod spec given a resource.
 func (p *Pod) GetPodSpec(path string) (*v1.PodSpec, error) {
 	pod, err := p.GetInstance(path)
 	if err != nil {
@@ -467,6 +463,7 @@ func (p *Pod) GetPodSpec(path string) (*v1.PodSpec, error) {
 	return &podSpec, nil
 }
 
+// SetImages sets container images.
 func (p *Pod) SetImages(ctx context.Context, path string, imageSpecs ImageSpecs) error {
 	ns, n := client.Namespaced(path)
 	auth, err := p.Client().CanI(ns, "v1/pod", []string{client.PatchVerb})
@@ -476,10 +473,11 @@ func (p *Pod) SetImages(ctx context.Context, path string, imageSpecs ImageSpecs)
 	if !auth {
 		return fmt.Errorf("user is not authorized to patch a deployment")
 	}
-	if manager, isManaged, err := p.isControlled(path); isManaged {
-		if err != nil {
-			return err
-		}
+	manager, isManaged, err := p.isControlled(path)
+	if err != nil {
+		return err
+	}
+	if isManaged {
 		return fmt.Errorf("Unable to set image. This pod is managed by %s. Please set the image on the controller", manager)
 	}
 	jsonPatch, err := GetJsonPatch(imageSpecs)
@@ -506,7 +504,7 @@ func (p *Pod) isControlled(path string) (string, bool, error) {
 		return "", false, err
 	}
 	references := pod.GetObjectMeta().GetOwnerReferences()
-	if len(references) != 0 && *references[0].Controller == true {
+	if len(references) > 0 {
 		return fmt.Sprintf("%s/%s", references[0].Kind, references[0].Name), true, nil
 	}
 	return "", false, nil

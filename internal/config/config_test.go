@@ -261,6 +261,7 @@ func TestSetup(t *testing.T) {
 
 var expectedConfig = `k9s:
   refreshRate: 100
+  maxConnRetry: 5
   enableMouse: false
   headless: false
   crumbsless: false
@@ -343,6 +344,7 @@ var expectedConfig = `k9s:
 
 var resetConfig = `k9s:
   refreshRate: 2
+  maxConnRetry: 5
   enableMouse: false
   headless: false
   crumbsless: false

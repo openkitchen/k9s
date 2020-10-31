@@ -29,11 +29,11 @@ type Pod struct {
 func NewPod(gvr client.GVR) ResourceViewer {
 	p := Pod{}
 	p.ResourceViewer = NewPortForwardExtender(
-		NewSetImageExtender(
+		NewImageExtender(
 			NewLogsExtender(NewBrowser(gvr), p.selectedContainer),
 		),
 	)
-	p.SetBindKeysFn(p.bindKeys)
+	p.AddBindKeysFn(p.bindKeys)
 	p.GetTable().SetEnterFn(p.showContainers)
 	p.GetTable().SetColorerFn(render.Pod{}.ColorerFunc())
 	p.GetTable().SetDecorateFn(p.portForwardIndicator)
@@ -63,7 +63,7 @@ func (p *Pod) bindDangerousKeys(aa ui.KeyActions) {
 }
 
 func (p *Pod) bindKeys(aa ui.KeyActions) {
-	if !p.App().Config.K9s.GetReadOnly() {
+	if !p.App().Config.K9s.IsReadOnly() {
 		p.bindDangerousKeys(aa)
 	}
 
@@ -351,7 +351,6 @@ func podIsRunning(f dao.Factory, path string) bool {
 	}
 
 	var re render.Pod
-	log.Debug().Msgf("Phase %#v", re.Phase(po))
 	return re.Phase(po) == render.Running
 }
 
@@ -359,9 +358,9 @@ func resourceSorters(t *Table) ui.KeyActions {
 	return ui.KeyActions{
 		ui.KeyShiftC:   ui.NewKeyAction("Sort CPU", t.SortColCmd(cpuCol, false), false),
 		ui.KeyShiftM:   ui.NewKeyAction("Sort MEM", t.SortColCmd(memCol, false), false),
-		ui.KeyShiftX:   ui.NewKeyAction("Sort %CPU (REQ)", t.SortColCmd("%CPU/R", false), false),
-		ui.KeyShiftZ:   ui.NewKeyAction("Sort %MEM (REQ)", t.SortColCmd("%MEM/R", false), false),
-		tcell.KeyCtrlX: ui.NewKeyAction("Sort %CPU (LIM)", t.SortColCmd("%CPU/L", false), false),
-		tcell.KeyCtrlQ: ui.NewKeyAction("Sort %MEM (LIM)", t.SortColCmd("%MEM/L", false), false),
+		ui.KeyShiftX:   ui.NewKeyAction("Sort CPU/R", t.SortColCmd("%CPU/R", false), false),
+		ui.KeyShiftZ:   ui.NewKeyAction("Sort MEM/R", t.SortColCmd("%MEM/R", false), false),
+		tcell.KeyCtrlX: ui.NewKeyAction("Sort CPU/L", t.SortColCmd("%CPU/L", false), false),
+		tcell.KeyCtrlQ: ui.NewKeyAction("Sort MEM/L", t.SortColCmd("%MEM/L", false), false),
 	}
 }

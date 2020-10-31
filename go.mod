@@ -4,13 +4,15 @@ go 1.15
 
 require (
 	github.com/atotto/clipboard v0.1.2
+	github.com/cenkalti/backoff v2.2.1+incompatible
+	github.com/cenkalti/backoff/v4 v4.1.0
 	github.com/derailed/popeye v0.8.10
 	github.com/derailed/tview v0.4.6
 	github.com/drone/envsubst v1.0.2 // indirect
 	github.com/fatih/color v1.9.0
-	github.com/fsnotify/fsnotify v1.4.7
-	github.com/fvbommel/sortorder v1.0.1
-	github.com/gdamore/tcell v1.3.0
+	github.com/fsnotify/fsnotify v1.4.9
+	github.com/fvbommel/sortorder v1.0.2
+	github.com/gdamore/tcell v1.4.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -38,6 +40,7 @@ require (
 	k8s.io/client-go v0.18.8
 	k8s.io/klog v1.0.0
 	k8s.io/kubectl v0.18.2
+	k8s.io/kubernetes v1.13.0
 	k8s.io/metrics v0.18.8
 	rsc.io/letsencrypt v0.0.3 // indirect
 	sigs.k8s.io/yaml v1.2.0

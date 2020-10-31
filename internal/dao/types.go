@@ -102,7 +102,7 @@ type Describer interface {
 	Describe(path string) (string, error)
 
 	// ToYAML dumps a resource to YAML.
-	ToYAML(path string) (string, error)
+	ToYAML(path string, showManaged bool) (string, error)
 }
 
 // Scalable represents resources that can scale.
@@ -147,6 +147,7 @@ type Logger interface {
 	Logs(path string, opts *v1.PodLogOptions) (*restclient.Request, error)
 }
 
+// ContainsPodSpec represents a resource with a pod template.
 type ContainsPodSpec interface {
 	// Get PodSpec of a resource
 	GetPodSpec(path string) (*v1.PodSpec, error)

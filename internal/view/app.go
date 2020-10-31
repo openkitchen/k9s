@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
@@ -30,7 +31,6 @@ var ExitStatus = ""
 const (
 	splashDelay      = 1 * time.Second
 	clusterRefresh   = 15 * time.Second
-	maxConRetry      = 15
 	clusterInfoWidth = 50
 	clusterInfoPad   = 15
 )
@@ -114,8 +114,6 @@ func (a *App) Init(version string, rate int) error {
 		return err
 	}
 	a.CmdBuff().SetSuggestionFn(a.suggestCommand())
-	// BOZO!!
-	// a.CmdBuff().AddListener(a)
 
 	a.layout(ctx, version)
 	a.initSignals()
@@ -130,23 +128,24 @@ func (a *App) layout(ctx context.Context, version string) {
 	main := tview.NewFlex().SetDirection(tview.FlexRow)
 	main.AddItem(a.statusIndicator(), 1, 1, false)
 	main.AddItem(a.Content, 0, 10, true)
+	if !a.Config.K9s.IsCrumbsless() {
+		main.AddItem(a.Crumbs(), 1, 1, false)
+	}
 	main.AddItem(flash, 1, 1, false)
 
 	a.Main.AddPage("main", main, true, false)
 	a.Main.AddPage("splash", ui.NewSplash(a.Styles, version), true, true)
-	a.toggleHeader(!a.Config.K9s.GetHeadless())
-	a.toggleCrumbs(!a.Config.K9s.GetCrumbsless())
+	a.toggleHeader(!a.Config.K9s.IsHeadless())
+	// a.toggleCrumbs(!a.Config.K9s.GetCrumbsless())
 }
 
 func (a *App) initSignals() {
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGABRT, syscall.SIGINT, syscall.SIGHUP, syscall.SIGQUIT)
+	signal.Notify(sig, syscall.SIGHUP)
 
 	go func(sig chan os.Signal) {
-		s := <-sig
-		if s == syscall.SIGHUP {
-			os.Exit(0)
-		}
+		<-sig
+		os.Exit(0)
 	}(sig)
 }
 
@@ -187,7 +186,7 @@ func (a *App) keyboard(evt *tcell.EventKey) *tcell.EventKey {
 func (a *App) bindKeys() {
 	a.AddActions(ui.KeyActions{
 		tcell.KeyCtrlE: ui.NewSharedKeyAction("ToggleHeader", a.toggleHeaderCmd, false),
-		tcell.KeyCtrlT: ui.NewSharedKeyAction("toggleCrumbs", a.toggleCrumbsCmd, false),
+		tcell.KeyCtrlG: ui.NewSharedKeyAction("toggleCrumbs", a.toggleCrumbsCmd, false),
 		ui.KeyHelp:     ui.NewSharedKeyAction("Help", a.helpCmd, false),
 		tcell.KeyCtrlA: ui.NewSharedKeyAction("Aliases", a.aliasCmd, false),
 		tcell.KeyEnter: ui.NewKeyAction("Goto", a.gotoCmd, false),
@@ -221,7 +220,9 @@ func (a *App) toggleCrumbs(flag bool) {
 		log.Fatal().Msg("Expecting valid flex view")
 	}
 	if a.showCrumbs {
-		flex.AddItemAtIndex(2, a.Crumbs(), 1, 1, false)
+		if _, ok := flex.ItemAt(2).(*ui.Crumbs); !ok {
+			flex.AddItemAtIndex(2, a.Crumbs(), 1, 1, false)
+		}
 	} else {
 		flex.RemoveItemAtIndex(2)
 	}
@@ -273,19 +274,34 @@ func (a *App) Resume() {
 }
 
 func (a *App) clusterUpdater(ctx context.Context) {
-	a.refreshCluster()
+	if err := a.refreshCluster(); err != nil {
+		log.Error().Err(err).Msgf("Cluster updater failed!")
+		return
+	}
+
+	bf := model.NewExpBackOff(ctx, clusterRefresh, 2*time.Minute)
+	delay := clusterRefresh
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug().Msg("ClusterInfo updater canceled!")
 			return
-		case <-time.After(clusterRefresh):
-			a.refreshCluster()
+		case <-time.After(delay):
+			if err := a.refreshCluster(); err != nil {
+				log.Error().Err(err).Msgf("ClusterUpdater failed")
+				if delay = bf.NextBackOff(); delay == backoff.Stop {
+					a.BailOut()
+					return
+				}
+			} else {
+				bf.Reset()
+				delay = clusterRefresh
+			}
 		}
 	}
 }
 
-func (a *App) refreshCluster() {
+func (a *App) refreshCluster() error {
 	c := a.Content.Top()
 	if ok := a.Conn().CheckConnectivity(); ok {
 		if atomic.LoadInt32(&a.conRetry) > 0 {
@@ -303,15 +319,15 @@ func (a *App) refreshCluster() {
 		c.Stop()
 	}
 
-	count := atomic.LoadInt32(&a.conRetry)
-	if count >= maxConRetry {
+	count, maxConnRetry := atomic.LoadInt32(&a.conRetry), int32(a.Config.K9s.MaxConnRetry)
+	if count >= maxConnRetry {
+		log.Error().Msgf("Conn check failed (%d/%d). Bailing out!", count, maxConnRetry)
 		ExitStatus = fmt.Sprintf("Lost K8s connection (%d). Bailing out!", count)
 		a.BailOut()
 	}
 	if count > 0 {
-		log.Warn().Msgf("Conn check failed (%d/%d)", count, maxConRetry)
-		a.Status(model.FlashWarn, fmt.Sprintf("Dial K8s failed (%d)", count))
-		return
+		a.Status(model.FlashWarn, fmt.Sprintf("Dial K8s Toast [%d/%d]", count, maxConnRetry))
+		return fmt.Errorf("Conn check failed (%d/%d)", count, maxConnRetry)
 	}
 
 	// Reload alias
@@ -323,6 +339,8 @@ func (a *App) refreshCluster() {
 
 	// Update cluster info
 	a.clusterModel.Refresh()
+
+	return nil
 }
 
 func (a *App) switchNS(ns string) error {
@@ -540,7 +558,7 @@ func (a *App) gotoCmd(evt *tcell.EventKey) *tcell.EventKey {
 }
 
 func (a *App) meowCmd(msg string) {
-	if err := a.inject(NewMeow(a, msg)); err != nil {
+	if err := a.inject(NewCow(a, msg)); err != nil {
 		a.Flash().Err(err)
 	}
 }
@@ -603,7 +621,7 @@ func (a *App) gotoResource(cmd, path string, clearStack bool) error {
 		return err
 	}
 
-	c := NewMeow(a, err.Error())
+	c := NewCow(a, err.Error())
 	_ = c.Init(context.Background())
 	if clearStack {
 		a.Content.Stack.Clear()
@@ -617,7 +635,7 @@ func (a *App) inject(c model.Component) error {
 	ctx := context.WithValue(context.Background(), internal.KeyApp, a)
 	if err := c.Init(ctx); err != nil {
 		log.Error().Err(err).Msgf("component init failed for %q %v", c.Name(), err)
-		c = NewMeow(a, err.Error())
+		c = NewCow(a, err.Error())
 		_ = c.Init(ctx)
 	}
 	a.Content.Push(c)

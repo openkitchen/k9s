@@ -1,17 +1,20 @@
 package render
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/tview"
 	runewidth "github.com/mattn/go-runewidth"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/duration"
 )
@@ -51,7 +54,7 @@ func AsThousands(n int64) string {
 	return p.Sprintf("%d", n)
 }
 
-// Happy returns true if resoure is happy, false otherwise
+// Happy returns true if resource is happy, false otherwise
 func Happy(ns string, h Header, r Row) bool {
 	if len(r.Fields) == 0 {
 		return true
@@ -62,13 +65,6 @@ func Happy(ns string, h Header, r Row) bool {
 	}
 	return strings.TrimSpace(r.Fields[validCol]) == ""
 }
-
-// const megaByte = 1024 * 1024
-
-// // ToMB converts bytes to megabytes.
-// func ToMB(v int64) float64 {
-// 	return float64(v) / megaByte
-// }
 
 func asStatus(err error) string {
 	if err == nil {
@@ -87,12 +83,12 @@ func asSelector(s *metav1.LabelSelector) string {
 	return sel.String()
 }
 
-type metric struct {
-	cpu, mem, cpuLim, memLim string
+func percentMc(v1, v2 *resource.Quantity) int {
+	return client.ToPercentage(v1.MilliValue(), v2.MilliValue())
 }
 
-func noMetric() metric {
-	return metric{cpu: NAValue, mem: NAValue, cpuLim: NAValue, memLim: NAValue}
+func percentMi(v1, v2 *resource.Quantity) int {
+	return client.ToPercentage(client.ToMB(v1.Value()), client.ToMB(v2.Value()))
 }
 
 // ToSelector flattens a map selector to a string selector.
@@ -148,6 +144,11 @@ func join(a []string, sep string) string {
 	}
 
 	return buff.String()
+}
+
+// AsPerc prints a number as percentage with parans.
+func AsPerc(p string) string {
+	return "(" + p + ")"
 }
 
 // PrintPerc prints a number as percentage.
@@ -257,14 +258,28 @@ func mapToIfc(m interface{}) (s string) {
 	return
 }
 
-// ToMillicore shows cpu reading for human.
-func ToMillicore(v int64) string {
-	return strconv.Itoa(int(v))
+func toMcPerc(v1, v2 *resource.Quantity) string {
+	m := v1.MilliValue()
+	return fmt.Sprintf("%s (%d%%)", toMc(m), client.ToPercentage(m, v2.MilliValue()))
 }
 
-// ToMi shows mem reading for human.
-func ToMi(v int64) string {
-	return strconv.Itoa(int(v))
+func toMiPerc(v1, v2 *resource.Quantity) string {
+	m := v1.Value()
+	return fmt.Sprintf("%s (%d%%)", toMi(m), client.ToPercentage(m, v2.Value()))
+}
+
+func toMc(v int64) string {
+	if v == 0 {
+		return ZeroValue
+	}
+	return AsThousands(v)
+}
+
+func toMi(v int64) string {
+	if v == 0 {
+		return ZeroValue
+	}
+	return AsThousands(client.ToMB(v))
 }
 
 func boolPtrToStr(b *bool) string {
