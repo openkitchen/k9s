@@ -20,7 +20,7 @@ import (
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/watch"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -48,6 +48,7 @@ type App struct {
 	filterHistory *model.History
 	conRetry      int32
 	showHeader    bool
+	showLogo      bool
 	showCrumbs    bool
 }
 
@@ -73,7 +74,7 @@ func (a *App) ConOK() bool {
 
 // Init initializes the application.
 func (a *App) Init(version string, rate int) error {
-	a.version = version
+	a.version = model.NormalizeVersion(version)
 
 	ctx := context.WithValue(context.Background(), internal.KeyApp, a)
 	if err := a.Content.Init(ctx); err != nil {
@@ -103,7 +104,7 @@ func (a *App) Init(version string, rate int) error {
 	}
 	a.initFactory(ns)
 
-	a.clusterModel = model.NewClusterInfo(a.factory, version)
+	a.clusterModel = model.NewClusterInfo(a.factory, a.version)
 	a.clusterModel.AddListener(a.clusterInfo())
 	a.clusterModel.AddListener(a.statusIndicator())
 	a.clusterModel.Refresh()
@@ -115,13 +116,13 @@ func (a *App) Init(version string, rate int) error {
 	}
 	a.CmdBuff().SetSuggestionFn(a.suggestCommand())
 
-	a.layout(ctx, version)
+	a.layout(ctx)
 	a.initSignals()
 
 	return nil
 }
 
-func (a *App) layout(ctx context.Context, version string) {
+func (a *App) layout(ctx context.Context) {
 	flash := ui.NewFlash(a.App)
 	go flash.Watch(ctx, a.Flash().Channel())
 
@@ -134,9 +135,8 @@ func (a *App) layout(ctx context.Context, version string) {
 	main.AddItem(flash, 1, 1, false)
 
 	a.Main.AddPage("main", main, true, false)
-	a.Main.AddPage("splash", ui.NewSplash(a.Styles, version), true, true)
-	a.toggleHeader(!a.Config.K9s.IsHeadless())
-	// a.toggleCrumbs(!a.Config.K9s.GetCrumbsless())
+	a.Main.AddPage("splash", ui.NewSplash(a.Styles, a.version), true, true)
+	a.toggleHeader(!a.Config.K9s.IsHeadless(), !a.Config.K9s.IsLogoless())
 }
 
 func (a *App) initSignals() {
@@ -198,8 +198,9 @@ func (a *App) ActiveView() model.Component {
 	return a.Content.GetPrimitive("main").(model.Component)
 }
 
-func (a *App) toggleHeader(flag bool) {
-	a.showHeader = flag
+func (a *App) toggleHeader(header, logo bool) {
+	a.showHeader = header
+	a.showLogo = logo
 	flex, ok := a.Main.GetPrimitive("main").(*tview.Flex)
 	if !ok {
 		log.Fatal().Msg("Expecting valid flex view")
@@ -246,7 +247,10 @@ func (a *App) buildHeader() tview.Primitive {
 	}
 	header.AddItem(a.clusterInfo(), clWidth, 1, false)
 	header.AddItem(a.Menu(), 0, 1, false)
-	header.AddItem(a.Logo(), 26, 1, false)
+
+	if a.showLogo {
+		header.AddItem(a.Logo(), 26, 1, false)
+	}
 
 	return header
 }
@@ -525,7 +529,7 @@ func (a *App) toggleHeaderCmd(evt *tcell.EventKey) *tcell.EventKey {
 
 	a.QueueUpdateDraw(func() {
 		a.showHeader = !a.showHeader
-		a.toggleHeader(a.showHeader)
+		a.toggleHeader(a.showHeader, a.showLogo)
 	})
 
 	return nil

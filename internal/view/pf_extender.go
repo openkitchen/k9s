@@ -10,7 +10,7 @@ import (
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/watch"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -132,7 +132,7 @@ func startFwdCB(v ResourceViewer, path, co string, tt []client.PortTunnel) {
 func showFwdDialog(v ResourceViewer, path string, cb PortForwardCB) error {
 	mm, err := fetchPodPorts(v.App().factory, path)
 	if err != nil {
-		return nil
+		return err
 	}
 	ports := make([]string, 0, len(mm))
 	for co, pp := range mm {
@@ -142,9 +142,6 @@ func showFwdDialog(v ResourceViewer, path string, cb PortForwardCB) error {
 			}
 			ports = append(ports, client.FQN(co, p.Name)+":"+strconv.Itoa(int(p.ContainerPort)))
 		}
-	}
-	if len(ports) == 0 {
-		return fmt.Errorf("no tcp ports found on %s", path)
 	}
 	ShowPortForwards(v, path, ports, cb)
 

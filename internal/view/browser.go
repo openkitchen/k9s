@@ -17,7 +17,7 @@ import (
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/ui/dialog"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -164,7 +164,7 @@ func (b *Browser) BufferActive(state bool, k model.BufferKind) {
 		log.Error().Err(err).Msgf("Refresh failed for %s", b.GVR())
 	}
 	b.app.QueueUpdateDraw(func() {
-		b.Update(b.GetModel().Peek())
+		b.Update(b.GetModel().Peek(), b.App().Conn().HasMetrics())
 		if b.GetRowCount() > 1 {
 			b.App().filterHistory.Push(b.CmdBuff().GetText())
 		}
@@ -213,7 +213,7 @@ func (b *Browser) TableDataChanged(data render.TableData) {
 
 	b.app.QueueUpdateDraw(func() {
 		b.refreshActions()
-		b.Update(data)
+		b.Update(data, b.app.Conn().HasMetrics())
 	})
 }
 
@@ -336,6 +336,9 @@ func (b *Browser) editCmd(evt *tcell.EventKey) *tcell.EventKey {
 	if client.IsClusterScoped(ns) {
 		ns = client.AllNamespaces
 	}
+	if b.GVR().String() == "v1/namespaces" {
+		ns = n
+	}
 	if ok, err := b.app.Conn().CanI(ns, b.GVR().String(), []string{"patch"}); !ok || err != nil {
 		b.App().Flash().Err(fmt.Errorf("Current user can't edit resource %s", b.GVR()))
 		return nil
@@ -346,11 +349,11 @@ func (b *Browser) editCmd(evt *tcell.EventKey) *tcell.EventKey {
 	{
 		args := make([]string, 0, 10)
 		args = append(args, "edit")
-		args = append(args, b.meta.SingularName)
+		args = append(args, b.GVR().FQN(n))
 		if ns != client.AllNamespaces {
 			args = append(args, "-n", ns)
 		}
-		if !runK(b.app, shellOpts{clear: true, args: append(args, n)}) {
+		if !runK(b.app, shellOpts{clear: true, args: args}) {
 			b.app.Flash().Err(errors.New("Edit exec failed"))
 		}
 	}
@@ -485,17 +488,19 @@ func (b *Browser) simpleDelete(selections []string, msg string) {
 		} else {
 			b.app.Flash().Infof("Delete resource %s %s", b.GVR(), selections[0])
 		}
+		log.Debug().Msgf("SELS %v", selections)
 		for _, sel := range selections {
 			nuker, ok := b.accessor.(dao.Nuker)
 			if !ok {
 				b.app.Flash().Errf("Invalid nuker %T", b.accessor)
-				return
+				continue
 			}
 			if err := nuker.Delete(sel, true, true); err != nil {
 				b.app.Flash().Errf("Delete failed with `%s", err)
 			} else {
-				b.GetTable().DeleteMark(sel)
+				b.app.factory.DeleteForwarder(sel)
 			}
+			b.GetTable().DeleteMark(sel)
 		}
 		b.refresh()
 	}, func() {})
@@ -513,10 +518,9 @@ func (b *Browser) resourceDelete(selections []string, msg string) {
 			if err := b.GetModel().Delete(b.defaultContext(), sel, cascade, force); err != nil {
 				b.app.Flash().Errf("Delete failed with `%s", err)
 			} else {
-				b.app.Flash().Infof("%s `%s deleted successfully", b.GVR(), sel)
 				b.app.factory.DeleteForwarder(sel)
-				b.GetTable().DeleteMark(sel)
 			}
+			b.GetTable().DeleteMark(sel)
 		}
 		b.refresh()
 	}, func() {})

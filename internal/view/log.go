@@ -20,7 +20,7 @@ import (
 	"github.com/derailed/k9s/internal/model"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -98,6 +98,8 @@ func (l *Log) Init(ctx context.Context) (err error) {
 	l.model.AddListener(l)
 	l.updateTitle()
 
+	l.model.ToggleShowTimestamp(l.app.Config.K9s.Logger.ShowTime)
+
 	return nil
 }
 
@@ -130,12 +132,12 @@ func (l *Log) LogChanged(lines [][]byte) {
 
 // BufferCompleted indicates input was accepted.
 func (l *Log) BufferCompleted(s string) {
-	l.model.Filter(l.logs.cmdBuff.GetText())
+	l.model.Filter(s)
 	l.updateTitle()
 }
 
 // BufferChanged indicates the buffer was changed.
-func (l *Log) BufferChanged(s string) {}
+func (l *Log) BufferChanged(string) {}
 
 // BufferActive indicates the buff activity changed.
 func (l *Log) BufferActive(state bool, k model.BufferKind) {
@@ -267,7 +269,6 @@ var EOL = []byte{'\n'}
 
 // Flush write logs to viewer.
 func (l *Log) Flush(lines [][]byte) {
-	log.Debug().Msgf("LOG-FLUSH %d", len(lines))
 	if !l.indicator.AutoScroll() {
 		return
 	}
@@ -284,9 +285,7 @@ func (l *Log) Flush(lines [][]byte) {
 
 func (l *Log) sinceCmd(a int) func(evt *tcell.EventKey) *tcell.EventKey {
 	return func(evt *tcell.EventKey) *tcell.EventKey {
-		opts := l.model.LogOptions()
-		opts.SinceSeconds = int64(a)
-		l.model.SetLogOptions(opts)
+		l.model.SetSinceSeconds(int64(a))
 		l.updateTitle()
 		return nil
 	}
@@ -305,7 +304,7 @@ func (l *Log) filterCmd(evt *tcell.EventKey) *tcell.EventKey {
 }
 
 // SaveCmd dumps the logs to file.
-func (l *Log) SaveCmd(evt *tcell.EventKey) *tcell.EventKey {
+func (l *Log) SaveCmd(*tcell.EventKey) *tcell.EventKey {
 	if path, err := saveData(l.app.Config.K9s.CurrentCluster, l.model.GetPath(), l.logs.GetText(true)); err != nil {
 		l.app.Flash().Err(err)
 	} else {
@@ -314,7 +313,7 @@ func (l *Log) SaveCmd(evt *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-func (l *Log) cpCmd(evt *tcell.EventKey) *tcell.EventKey {
+func (l *Log) cpCmd(*tcell.EventKey) *tcell.EventKey {
 	l.app.Flash().Info("Content copied to clipboard...")
 	if err := clipboard.WriteAll(l.logs.GetText(true)); err != nil {
 		l.app.Flash().Err(err)
@@ -378,7 +377,7 @@ func (l *Log) toggleTimestampCmd(evt *tcell.EventKey) *tcell.EventKey {
 	}
 
 	l.indicator.ToggleTimestamp()
-	l.model.Refresh()
+	l.model.ToggleShowTimestamp(l.indicator.showTime)
 
 	return nil
 }

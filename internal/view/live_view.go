@@ -12,7 +12,7 @@ import (
 	"github.com/derailed/k9s/internal/model"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	"github.com/sahilm/fuzzy"
 )
@@ -33,6 +33,7 @@ type LiveView struct {
 	fullScreen                bool
 	managedField              bool
 	cancel                    context.CancelFunc
+	autoRefresh               bool
 }
 
 // NewLiveView returns a live viewer.
@@ -82,7 +83,8 @@ func (v *LiveView) Init(_ context.Context) error {
 // ResourceFailed notifies when their is an issue.
 func (v *LiveView) ResourceFailed(err error) {
 	v.text.SetTextAlign(tview.AlignCenter)
-	v.text.SetText(cowTalk(err.Error()))
+	x, _, w, _ := v.GetRect()
+	v.text.SetText(cowTalk(err.Error(), x+w))
 }
 
 // ResourceChanged notifies when the filter changes.
@@ -131,6 +133,7 @@ func (v *LiveView) bindKeys() {
 		tcell.KeyCtrlS:  ui.NewKeyAction("Save", v.saveCmd, false),
 		ui.KeyC:         ui.NewKeyAction("Copy", v.cpCmd, true),
 		ui.KeyF:         ui.NewKeyAction("Toggle FullScreen", v.toggleFullScreenCmd, true),
+		ui.KeyR:         ui.NewKeyAction("Toggle Auto-Refresh", v.toggleRefreshCmd, true),
 		ui.KeyN:         ui.NewKeyAction("Next Match", v.nextCmd, true),
 		ui.KeyShiftN:    ui.NewKeyAction("Prev Match", v.prevCmd, true),
 		ui.KeySlash:     ui.NewSharedKeyAction("Filter Mode", v.activateCmd, false),
@@ -142,6 +145,20 @@ func (v *LiveView) bindKeys() {
 			ui.KeyM: ui.NewKeyAction("Toggle ManagedFields", v.toggleManagedCmd, true),
 		})
 	}
+}
+
+// ToggleRefreshCmd is used for pausing the refreshing of data on config map and secrets
+func (v *LiveView) toggleRefreshCmd(evt *tcell.EventKey) *tcell.EventKey {
+	v.autoRefresh = !v.autoRefresh
+	if v.autoRefresh {
+		v.Start()
+		v.app.Flash().Info("Auto-refresh is enabled")
+		return nil
+	}
+	v.Stop()
+	v.app.Flash().Info("Auto-refresh is disabled")
+
+	return nil
 }
 
 func (v *LiveView) keyboard(evt *tcell.EventKey) *tcell.EventKey {
@@ -170,12 +187,16 @@ func (v *LiveView) Name() string { return v.title }
 
 // Start starts the view updater.
 func (v *LiveView) Start() {
-	var ctx context.Context
-	ctx, v.cancel = context.WithCancel(v.defaultCtx())
+	if v.autoRefresh {
+		var ctx context.Context
+		ctx, v.cancel = context.WithCancel(v.defaultCtx())
 
-	if err := v.model.Watch(ctx); err != nil {
-		log.Error().Err(err).Msgf("LiveView watcher failed")
+		if err := v.model.Watch(ctx); err != nil {
+			log.Error().Err(err).Msgf("LiveView watcher failed")
+		}
+		return
 	}
+	v.model.Refresh(v.defaultCtx())
 }
 
 func (v *LiveView) defaultCtx() context.Context {

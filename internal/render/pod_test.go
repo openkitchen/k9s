@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/derailed/k9s/internal/render"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	res "k8s.io/apimachinery/pkg/api/resource"
@@ -159,7 +159,7 @@ func TestPodRender(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, "default/nginx", r.ID)
-	e := render.Fields{"default", "nginx", "●", "1/1", "0", "Running", "100", "50", "100:0", "70:170", "100", "0", "71", "29", "172.17.0.6", "minikube", "BE"}
+	e := render.Fields{"default", "nginx", "●", "1/1", "0", "Running", "100", "50", "100:0", "70:170", "100", "n/a", "71", "29", "172.17.0.6", "minikube", "BE"}
 	assert.Equal(t, e, r.Fields[:17])
 }
 
@@ -190,7 +190,7 @@ func TestPodInitRender(t *testing.T) {
 	assert.Nil(t, err)
 
 	assert.Equal(t, "default/nginx", r.ID)
-	e := render.Fields{"default", "nginx", "●", "1/1", "0", "Init:0/1", "10", "10", "100:0", "70:170", "10", "0", "14", "5", "172.17.0.6", "minikube", "BE"}
+	e := render.Fields{"default", "nginx", "●", "1/1", "0", "Init:0/1", "10", "10", "100:0", "70:170", "10", "n/a", "14", "5", "172.17.0.6", "minikube", "BE"}
 	assert.Equal(t, e, r.Fields[:17])
 }
 

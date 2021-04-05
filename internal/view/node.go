@@ -11,7 +11,7 @@ import (
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/ui/dialog"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -47,7 +47,7 @@ func (n *Node) bindDangerousKeys(aa ui.KeyActions) {
 }
 
 func (n *Node) bindKeys(aa ui.KeyActions) {
-	aa.Delete(ui.KeySpace, tcell.KeyCtrlSpace, tcell.KeyCtrlD)
+	aa.Delete(ui.KeySpace, tcell.KeyCtrlSpace)
 
 	if !n.App().Config.K9s.IsReadOnly() {
 		n.bindDangerousKeys(aa)
@@ -73,7 +73,7 @@ func (n *Node) drainCmd(evt *tcell.EventKey) *tcell.EventKey {
 	defaults := dao.DrainOptions{
 		GracePeriodSeconds:  -1,
 		Timeout:             5 * time.Second,
-		DeleteLocalData:     false,
+		DeleteEmptyDirData:  false,
 		IgnoreAllDaemonSets: false,
 	}
 	ShowDrain(n, path, defaults, drainNode)

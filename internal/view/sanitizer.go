@@ -12,7 +12,7 @@ import (
 	"github.com/derailed/k9s/internal/ui"
 	"github.com/derailed/k9s/internal/xray"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	"github.com/rs/zerolog/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -62,7 +62,7 @@ func (s *Sanitizer) Init(ctx context.Context) error {
 
 	s.bindKeys()
 	s.SetBackgroundColor(s.app.Styles.Xray().BgColor.Color())
-	s.SetBorderColor(s.app.Styles.Xray().FgColor.Color())
+	s.SetBorderColor(s.app.Styles.Frame().Border.FgColor.Color())
 	s.SetBorderFocusColor(s.app.Styles.Frame().Border.FocusColor.Color())
 	s.SetGraphicsColor(s.app.Styles.Xray().GraphicColor.Color())
 	s.SetTitle(strings.Title(s.gvr.R()))

@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/tview"
-	"github.com/gdamore/tcell"
+	"github.com/gdamore/tcell/v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -96,7 +97,7 @@ func (c Container) Render(o interface{}, name string, r *Row) error {
 		return fmt.Errorf("Expected ContainerRes, but got %T", o)
 	}
 
-	cur, perc, res := gatherMetrics(co.Container, co.MX)
+	cur, res := gatherMetrics(co.Container, co.MX)
 	ready, state, restarts := "false", MissingValue, "0"
 	if co.Status != nil {
 		ready, state, restarts = boolToStr(co.Status.Ready), ToContainerState(co.Status.State), strconv.Itoa(int(co.Status.RestartCount))
@@ -112,14 +113,14 @@ func (c Container) Render(o interface{}, name string, r *Row) error {
 		boolToStr(co.IsInit),
 		restarts,
 		probe(co.Container.LivenessProbe) + ":" + probe(co.Container.ReadinessProbe),
-		toMc(cur.rCPU().MilliValue()),
-		toMi(cur.rMEM().Value()),
-		toMc(res[requestCPU].MilliValue()) + ":" + toMc(res[limitCPU].MilliValue()),
-		toMi(res[requestMEM].Value()) + ":" + toMi(res[limitMEM].Value()),
-		strconv.Itoa(perc.rCPU()),
-		strconv.Itoa(perc.lCPU()),
-		strconv.Itoa(perc.rMEM()),
-		strconv.Itoa(perc.lMEM()),
+		toMc(cur.cpu),
+		toMi(cur.mem),
+		toMc(res.cpu) + ":" + toMc(res.lcpu),
+		toMi(res.mem) + ":" + toMi(res.lmem),
+		client.ToPercentageStr(cur.cpu, res.cpu),
+		client.ToPercentageStr(cur.cpu, res.lcpu),
+		client.ToPercentageStr(cur.mem, res.mem),
+		client.ToPercentageStr(cur.mem, res.lmem),
 		ToContainerPorts(co.Container.Ports),
 		asStatus(c.diagnose(state, ready)),
 		toAge(co.Age),
@@ -143,29 +144,30 @@ func (Container) diagnose(state, ready string) error {
 // ----------------------------------------------------------------------------
 // Helpers...
 
-func gatherMetrics(co *v1.Container, mx *mv1beta1.ContainerMetrics) (resources, percentages, resources) {
+func gatherMetrics(co *v1.Container, mx *mv1beta1.ContainerMetrics) (c, r metric) {
 	rList, lList := containerRequests(co), co.Resources.Limits
-	c, p, r := newResources(nil, nil), newPercentages(), newResources(rList, lList)
-	if mx == nil {
-		return c, p, r
-	}
-
-	c[requestCPU], c[requestMEM] = mx.Usage.Cpu(), mx.Usage.Memory()
 	if rList.Cpu() != nil {
-		p[requestCPU] = percentMc(c.rCPU(), rList.Cpu())
+		r.cpu = rList.Cpu().MilliValue()
 	}
-	if rList.Memory() != nil {
-		p[requestMEM] = percentMi(c.rMEM(), rList.Memory())
-	}
-
 	if lList.Cpu() != nil {
-		p[limitCPU] = percentMc(c.lCPU(), lList.Cpu())
+		r.lcpu = lList.Cpu().MilliValue()
 	}
 	if rList.Memory() != nil {
-		p[limitMEM] = percentMi(c.lMEM(), lList.Memory())
+		r.mem = rList.Memory().Value()
+	}
+	if lList.Memory() != nil {
+		r.lmem = lList.Memory().Value()
+	}
+	if mx != nil {
+		if mx.Usage.Cpu() != nil {
+			c.cpu = mx.Usage.Cpu().MilliValue()
+		}
+		if mx.Usage.Memory() != nil {
+			c.mem = mx.Usage.Memory().Value()
+		}
 	}
 
-	return c, p, r
+	return
 }
 
 // ToContainerPorts returns container ports as a string.
@@ -205,11 +207,16 @@ func ToContainerState(s v1.ContainerState) string {
 	}
 }
 
+const (
+	on  = "on"
+	off = "off"
+)
+
 func probe(p *v1.Probe) string {
 	if p == nil {
-		return "off"
+		return off
 	}
-	return "on"
+	return on
 }
 
 // ContainerRes represents a container and its metrics.
